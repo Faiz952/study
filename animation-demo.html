@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>30 秒炫酷动画</title>
+<style>
+  html,body{margin:0;height:100%;background:#03030a;overflow:hidden;cursor:pointer}
+  canvas{display:block;width:100vw;height:100vh}
+  .vig{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.75) 100%),
+    repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px)}
+  .bar{position:fixed;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,#0ff,#f0f,#ff0);
+    box-shadow:0 0 12px #f0f}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="vig"></div>
+<div class="bar" id="bar"></div>
+<script>
+(() => {
+const DURATION = 30;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const bar = document.getElementById('bar');
+let W, H, DPR, CX, CY, M;
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const easeOutExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+const easeInOut = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const PAL = Array.from({ length: 360 }, (_, h) => `hsl(${h},100%,60%)`);
+const col = h => PAL[((h % 360) + 360) % 360 | 0];
+
+// ---------- text -> points ----------
+function sampleText(str, widthFrac, heightMax, step) {
+  const o = document.createElement('canvas'); o.width = W; o.height = H;
+  const c = o.getContext('2d');
+  let size = 200;
+  c.font = `900 ${size}px "Microsoft YaHei","PingFang SC",Impact,sans-serif`;
+  size = Math.min(size * (W * widthFrac) / c.measureText(str).width, H * heightMax);
+  c.font = `900 ${size}px "Microsoft YaHei","PingFang SC",Impact,sans-serif`;
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#fff';
+  c.fillText(str, CX, CY);
+  const d = c.getImageData(0, 0, W, H).data, pts = [];
+  for (let y = 0; y < H; y += step) for (let x = 0; x < W; x += step)
+    if (d[(y * W + x) * 4 + 3] > 128) pts.push(x, y);
+  return pts;
+}
+
+function makeTextSystem(str, widthFrac, heightMax, step, maxN) {
+  const pts = sampleText(str, widthFrac, heightMax, step);
+  const n = Math.min(pts.length / 2, maxN);
+  const idx = Array.from({ length: pts.length / 2 }, (_, i) => i).sort(() => Math.random() - .5).slice(0, n);
+  const S = { n, tx: new Float32Array(n), ty: new Float32Array(n), sx: new Float32Array(n),
+    sy: new Float32Array(n), dl: new Float32Array(n), sz: new Float32Array(n) };
+  idx.forEach((k, i) => {
+    S.tx[i] = pts[k * 2]; S.ty[i] = pts[k * 2 + 1];
+    const a = rnd(0, 6.283), r = Math.max(W, H) * rnd(.55, 1.1);
+    S.sx[i] = Math.cos(a) * r; S.sy[i] = Math.sin(a) * r;
+    S.dl[i] = Math.random() * 1.6; S.sz[i] = rnd(1, 2.4);
+  });
+  return S;
+}
+
+function drawTextSystem(S, s, dur, explodeAt, explodeLen, hueBase) {
+  ctx.globalCompositeOperation = 'lighter';
+  const e = clamp((s - explodeAt) / explodeLen);
+  for (let i = 0; i < S.n; i++) {
+    const p = easeOutExpo(clamp((s - S.dl[i]) / dur));
+    const rot = (1 - p) * 2.6, cs = Math.cos(rot), sn = Math.sin(rot);
+    const vx = S.sx[i] * (1 - p), vy = S.sy[i] * (1 - p);
+    const dx = S.tx[i] - CX, dy = S.ty[i] - CY;
+    let x = CX + vx * cs - vy * sn + dx * p, y = CY + vx * sn + vy * cs + dy * p;
+    // idle shimmer
+    const w = p * 1.8;
+    x += Math.sin(s * 3 + S.ty[i] * .05) * w; y += Math.cos(s * 2.5 + S.tx[i] * .05) * w;
+    x += dx * e * e * 2.4; y += dy * e * e * 2.4 + e * e * 120;
+    ctx.fillStyle = col(hueBase + S.tx[i] / W * 140 + s * 60 + (1 - p) * 90);
+    ctx.globalAlpha = (0.35 + 0.65 * p) * (1 - e * e);
+    const z = S.sz[i] * DPR * (1 + (1 - p));
+    ctx.fillRect(x - z / 2, y - z / 2, z, z);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- scene data ----------
+let S1, S5, stars, tunnelStars, knotPts;
+function build() {
+  S1 = makeTextSystem('ANIMATE', .78, .34, Math.max(3, Math.round(4 * DPR)), 6500);
+  S5 = makeTextSystem('前端动画', .7, .36, Math.max(3, Math.round(4 * DPR)), 6500);
+  stars = Array.from({ length: 5500 }, () => {
+    const arm = (Math.random() * 3 | 0) * 2.0944, r = Math.pow(Math.random(), .65);
+    return { r, a: arm + r * 7 + rnd(-.35, .35) * (1 - r * .4), y: rnd(-1, 1) * .09 * (1 - r) ** 1.5 + rnd(-.01, .01),
+      h: 190 + r * 150 + rnd(-20, 20), z: rnd(.8, 2.2) };
+  });
+  tunnelStars = Array.from({ length: 260 }, () => ({ a: rnd(0, 6.283), o: Math.random(), h: rnd(160, 320) }));
+  knotPts = Array.from({ length: 3200 }, (_, i) => ({ u: i / 3200 * 6.2832, k: rnd(0, 6.283), rr: Math.pow(Math.random(), .5) * .5 }));
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR;
+  CX = W / 2; CY = H / 2; M = Math.min(W, H);
+  ctx.fillStyle = '#03030a'; ctx.fillRect(0, 0, W, H);
+  build();
+}
+addEventListener('resize', resize);
+
+// ---------- scene 1: particle text ----------
+function scene1(s) {
+  // soft pulsing aura
+  const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, M * .8);
+  g.addColorStop(0, `hsla(${s * 40 + 220},100%,50%,${.08 * clamp(s / 2)})`); g.addColorStop(1, 'transparent');
+  ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  drawTextSystem(S1, s, 2.4, 4.4, 1.6, 180);
+}
+
+// ---------- scene 2: neon tunnel ----------
+function scene2(s) {
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  // speed streaks
+  for (const st of tunnelStars) {
+    const f = ((st.o + s * .9) % 1) ** 2, r0 = f * M * 1.1, r1 = r0 * (1 + .25 * f) + 4;
+    const ca = Math.cos(st.a + s * .3), sa = Math.sin(st.a + s * .3);
+    ctx.strokeStyle = col(st.h + s * 50); ctx.globalAlpha = f * .9; ctx.lineWidth = (.5 + f * 2.5) * DPR;
+    ctx.beginPath(); ctx.moveTo(CX + ca * r0, CY + sa * r0); ctx.lineTo(CX + ca * r1, CY + sa * r1); ctx.stroke();
+  }
+  const N = 38, rings = [];
+  for (let i = 0; i < N; i++) {
+    let z = (i / N - s * .22) % 1; if (z < 0) z += 1;
+    rings.push(z);
+  }
+  rings.sort((a, b) => a - b);
+  let prev = null;
+  for (const z of rings) {
+    const k = 1 / (z * 5 + .06), R = M * .045 * k;
+    const ox = Math.sin(s * 1.1 + z * 5) * W * .14 * z, oy = Math.cos(s * .8 + z * 4) * H * .1 * z;
+    const rot = s * .6 + z * 4, sides = 6, pts = [];
+    for (let j = 0; j < sides; j++) {
+      const a = rot + j / sides * 6.2832;
+      pts.push(CX + ox + Math.cos(a) * R, CY + oy + Math.sin(a) * R);
+    }
+    const al = clamp(z * 7) * (1 - z * .75), hue = z * 260 + s * 70 + 200;
+    ctx.strokeStyle = col(hue);
+    ctx.globalAlpha = al * .25; ctx.lineWidth = (3 + (1 - z) * 12) * DPR;
+    poly(pts);
+    ctx.globalAlpha = al; ctx.lineWidth = (1 + (1 - z) * 3) * DPR;
+    poly(pts);
+    if (prev) {
+      ctx.globalAlpha = al * .5; ctx.lineWidth = DPR;
+      ctx.beginPath();
+      for (let j = 0; j < sides; j++) { ctx.moveTo(prev[j * 2], prev[j * 2 + 1]); ctx.lineTo(pts[j * 2], pts[j * 2 + 1]); }
+      ctx.stroke();
+    }
+    prev = pts;
+  }
+  const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, M * (.12 + .02 * Math.sin(s * 8)));
+  g.addColorStop(0, 'rgba(255,255,255,.8)'); g.addColorStop(.3, `hsla(${s * 70 + 280},100%,60%,.4)`); g.addColorStop(1, 'transparent');
+  ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function poly(p) {
+  ctx.beginPath(); ctx.moveTo(p[0], p[1]);
+  for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+  ctx.closePath(); ctx.stroke();
+}
+
+// ---------- scene 3: galaxy ----------
+function scene3(s) {
+  ctx.globalCompositeOperation = 'lighter';
+  const tilt = .9 + Math.sin(s * .5) * .35, ct = Math.cos(tilt), st = Math.sin(tilt);
+  const zoom = M * (.55 + .25 * easeInOut(clamp(s / 6)) + .04 * Math.sin(s * 5));
+  const roll = s * .25;
+  // core glow
+  const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, zoom * .5);
+  g.addColorStop(0, `rgba(255,240,220,${.55 + .15 * Math.sin(s * 6)})`); g.addColorStop(.25, 'rgba(255,120,200,.22)'); g.addColorStop(1, 'transparent');
+  ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const warp = clamp((s - 5) / 1);
+  for (const q of stars) {
+    const a = q.a + s * .9 / (q.r * 2.5 + .35) * (.6 + warp * 1.5) + roll;
+    const x0 = Math.cos(a) * q.r, z0 = Math.sin(a) * q.r, y0 = q.y;
+    const y1 = y0 * ct - z0 * st, z1 = y0 * st + z0 * ct;
+    const persp = 1 / (1 - z1 * .45);
+    const x = CX + x0 * zoom * persp, y = CY + y1 * zoom * persp;
+    const tw = .55 + .45 * Math.sin(s * 4 + q.a * 20);
+    ctx.fillStyle = col(q.h + s * 30);
+    ctx.globalAlpha = clamp(persp * .6) * tw;
+    const z = q.z * DPR * persp * (1 + warp * 1.2);
+    ctx.fillRect(x, y, z, z);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- scene 4: torus knot + ribbons ----------
+function scene4(s) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (let r = 0; r < 5; r++) {
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 12 * DPR) {
+      const u = x / W;
+      const y = CY + Math.sin(u * 6 + s * (1.2 + r * .35) + r) * H * .14 * Math.sin(u * 3.14159 ) * (1 + .3 * Math.sin(s + r))
+        + Math.sin(u * 14 - s * 2) * H * .02;
+      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.strokeStyle = col(r * 50 + s * 80 + 120); ctx.globalAlpha = .45; ctx.lineWidth = 2 * DPR; ctx.stroke();
+  }
+  const q = 3 + Math.sin(s * .7) * .0 + clamp((s - 2.5) / 2) * 2 * (s < 4.5 ? 1 : 0) + (s >= 4.5 ? 2 : 0);
+  const p = 2, ay = s * .9, ax = s * .55, scale = M * .17 * (1 + .08 * Math.sin(s * 6));
+  const cy = Math.cos(ay), sy = Math.sin(ay), cx = Math.cos(ax), sx = Math.sin(ax);
+  for (const k of knotPts) {
+    const u = k.u, r = Math.cos(q * u / p * 1) + 2.2;
+    let x = r * Math.cos(u), y = r * Math.sin(u), z = -Math.sin(q * u / p);
+    x += Math.cos(k.k) * k.rr * .6; z += Math.sin(k.k) * k.rr * .6; y += Math.sin(k.k * 2) * k.rr * .3;
+    const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+    const y2 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
+    const persp = 1 / (1 - z2 * .12);
+    ctx.fillStyle = col(u / 6.2832 * 360 + s * 90);
+    ctx.globalAlpha = clamp(.35 + z2 * .15 + .3) ;
+    const sz = (1.4 + z2 * .3 + 1) * DPR * persp;
+    ctx.fillRect(CX + x1 * scale * persp, CY + y2 * scale * persp, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- scene 5: finale ----------
+function scene5(s) {
+  ctx.globalCompositeOperation = 'lighter';
+  // shockwaves
+  [0, 3.4].forEach(t0 => {
+    const d = s - t0; if (d < 0) return;
+    for (let i = 0; i < 3; i++) {
+      const r = (d - i * .12) * M * .75; if (r <= 0) continue;
+      ctx.strokeStyle = col(d * 120 + i * 40 + 280);
+      ctx.globalAlpha = Math.max(0, 1 - d / 2.2) * .8; ctx.lineWidth = (6 - i * 2) * DPR;
+      ctx.beginPath(); ctx.arc(CX, CY, r, 0, 6.2832); ctx.stroke();
+    }
+  });
+  // orbiting sparks
+  for (let i = 0; i < 90; i++) {
+    const a = i / 90 * 6.2832 + s * (.6 + (i % 3) * .2), rr = M * (.34 + .05 * Math.sin(s * 2 + i)) * clamp((s - 1) / 1.5);
+    ctx.fillStyle = col(i * 4 + s * 100); ctx.globalAlpha = .8;
+    const z = (2 + (i % 4)) * DPR;
+    ctx.fillRect(CX + Math.cos(a) * rr * 1.5, CY + Math.sin(a) * rr * .6, z, z);
+  }
+  ctx.globalAlpha = 1;
+  const pulse = 1 + .015 * Math.sin(s * 8);
+  ctx.save(); ctx.translate(CX, CY); ctx.scale(pulse, pulse); ctx.translate(-CX, -CY);
+  drawTextSystem(S5, s, 2.2, 5.0, .9, 300);
+  ctx.restore();
+  // subtitle
+  const sa = clamp((s - 3) / 1) * (1 - clamp((s - 5) / .8));
+  if (sa > 0) {
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = sa; ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center'; ctx.font = `300 ${M * .028}px ui-monospace,monospace`;
+    ctx.letterSpacing = `${M * .012}px`;
+    ctx.fillText('CANVAS · 3D · PARTICLES · MOTION', CX, CY + M * .26); ctx.letterSpacing = '0px';
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- timeline ----------
+const scenes = [
+  { t0: 0, fn: scene1, name: '01 / PARTICLES' },
+  { t0: 6, fn: scene2, name: '02 / HYPERTUNNEL' },
+  { t0: 12, fn: scene3, name: '03 / GALAXY' },
+  { t0: 18, fn: scene4, name: '04 / TOPOLOGY' },
+  { t0: 24, fn: scene5, name: '05 / FINALE' },
+];
+
+let start = performance.now(), seekOff = 0, done = false;
+const qs = new URLSearchParams(location.search);
+if (qs.has('t')) seekOff = parseFloat(qs.get('t')) * 1000;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const t = (now - start + seekOff) / 1000;
+  if (t >= DURATION) {
+    if (!done) {
+      done = true; ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.fillStyle = '#03030a'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#9ad'; ctx.textAlign = 'center'; ctx.font = `${M * .03}px ui-monospace,monospace`;
+      ctx.fillText('▶ 点击重播', CX, CY);
+      bar.style.width = '100%';
+    }
+    return;
+  }
+  const idx = scenes.findIndex((sc, i) => !scenes[i + 1] || t < scenes[i + 1].t0);
+  const sc = scenes[idx], s = t - sc.t0, since = t - sc.t0;
+
+  // trail fade (motion blur)
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.fillStyle = idx === 2 ? 'rgba(3,3,10,.28)' : 'rgba(3,3,10,.2)';
+  ctx.fillRect(0, 0, W, H);
+
+  // shake on transition
+  const flash = since < 1.2 && idx > 0 ? Math.exp(-since * 7) : 0;
+  ctx.save();
+  if (flash > .02) ctx.translate((Math.random() - .5) * flash * 30 * DPR, (Math.random() - .5) * flash * 30 * DPR);
+  sc.fn(s);
+  ctx.restore();
+
+  // chromatic flash + white flash
+  if (flash > .02) {
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, M);
+    g.addColorStop(0, `rgba(255,255,255,${flash * .85})`); g.addColorStop(1, `rgba(120,80,255,${flash * .25})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+
+  // caption
+  const ca = clamp(since / .6) * (1 - clamp((since - 4.2) / 1.2));
+  ctx.globalCompositeOperation = 'source-over';
+  if (ca > 0) {
+    ctx.globalAlpha = ca * .9; ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+    ctx.font = `${M * .02}px ui-monospace,monospace`; ctx.letterSpacing = `${M * .006}px`;
+    ctx.fillText(sc.name, M * .04, M * .06); ctx.letterSpacing = '0px';
+  }
+  // intro / outro fade
+  const fadeOut = clamp((t - 29) / 1);
+  const fadeIn = 1 - clamp(t / .6);
+  if (fadeOut || fadeIn) { ctx.globalAlpha = Math.max(fadeOut, fadeIn); ctx.fillStyle = '#03030a'; ctx.fillRect(0, 0, W, H); }
+  ctx.globalAlpha = 1;
+  bar.style.width = (t / DURATION * 100) + '%';
+}
+
+addEventListener('click', () => { if (done) { done = false; seekOff = 0; start = performance.now(); resize(); } });
+resize();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
