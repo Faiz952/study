@@ -1,0 +1,946 @@
+<title>夜行列车</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one 16:9 stage (canvas film) on top, transport bar under it, clickable lyric sheet below. Single committed night look. */
+:root{
+  color-scheme: dark;
+  --bg:#070914; --panel:#0e1126; --line:#232a52; --fg:#e8eaf8; --mute:#8f96c0;
+  --lamp:#ffcf8a; --lamp-ink:#2a1a08; --dusk:#323a78; --chorus:#7a4d7a; --hover:#171b3a;
+  --display:"Ma Shan Zheng","STKaiti","KaiTi","Kaiti SC",serif;
+  --serif:"Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  --ui:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--ui);padding-inline:16px;padding-block:0}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:18px;padding-block:22px 56px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 22px}
+.top h1{margin:0;font:400 44px/1.1 var(--display);color:var(--lamp);letter-spacing:.04em}
+.top p{margin:0;color:var(--mute);max-width:46ch;min-width:0}
+.stage{position:relative;aspect-ratio:16/9;background:#02030a;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.stage canvas{display:block;width:100%;height:100%}
+.stage:fullscreen{border-radius:0;border:0;aspect-ratio:auto;display:grid;place-items:center}
+.stage:fullscreen canvas{width:min(100vw,177.78vh);height:auto;aspect-ratio:16/9}
+.veil{position:absolute;inset:0;width:100%;border:0;margin:0;padding:0;color:var(--fg);font:inherit;cursor:pointer;
+  display:grid;place-content:end center;justify-items:center;gap:8px;padding-bottom:5%;
+  background:linear-gradient(180deg,rgba(3,4,14,.05) 35%,rgba(3,4,14,.78))}
+.veil[hidden]{display:none}
+.veil .disc{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;background:var(--lamp);color:var(--lamp-ink);box-shadow:0 0 0 8px rgba(255,207,138,.18),0 10px 40px rgba(0,0,0,.5);transition:transform .2s}
+.veil:hover .disc{transform:scale(1.06)}
+.veil .t{font:500 20px/1.3 var(--serif);letter-spacing:.2em;margin-top:6px}
+.veil .s{font-size:13px;color:var(--mute)}
+.veil:focus-visible,.pp:focus-visible,.fsb:focus-visible,.ln:focus-visible,#seek:focus-visible{outline:2px solid var(--lamp);outline-offset:3px}
+.bar{display:flex;align-items:center;gap:12px;min-width:0}
+.pp,.fsb{flex:none;width:44px;height:44px;border-radius:50%;border:0;display:grid;place-items:center;cursor:pointer}
+.pp{background:var(--lamp);color:var(--lamp-ink)}
+.fsb{background:var(--panel);color:var(--fg);border:1px solid var(--line);width:40px;height:40px}
+.pp svg,.fsb svg{display:block}
+.time{flex:none;font-variant-numeric:tabular-nums;color:var(--mute);font-size:13px;min-width:5.6em;text-align:right}
+#seek{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:8px;border-radius:4px;margin:0;cursor:pointer;
+  background:linear-gradient(90deg,rgba(255,207,138,.95) var(--p,0%),transparent var(--p,0%)),var(--track,var(--dusk))}
+#seek::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--lamp);border:2px solid var(--bg)}
+#seek::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--lamp);border:2px solid var(--bg)}
+.lyrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:22px 28px}
+.sec{min-width:0}
+.sec h3{margin:0 0 6px;font:500 12px/1.4 var(--ui);letter-spacing:.3em;color:var(--mute);text-transform:uppercase;padding-left:8px}
+.sec.chorus h3{color:#d9a6d2}
+.ln{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:5px 8px;cursor:pointer;
+  font:500 17px/1.5 var(--serif);color:#9ba3cf}
+.ln:hover{background:var(--hover);color:var(--fg)}
+.ln.on{background:var(--hover);color:var(--lamp)}
+.ln.inst{font-style:normal;color:var(--mute);font-size:14px}
+.note{margin:0;color:var(--mute);font-size:13px;max-width:70ch}
+@media (max-width:560px){.top h1{font-size:36px}.time{min-width:0;font-size:12px}.bar{gap:8px}}
+@media (prefers-reduced-motion:reduce){.veil .disc{transition:none}}
+</style>
+
+<main class="wrap">
+  <header class="top">
+    <h1>夜行列车</h1>
+    <p>一首原创小曲。旋律、鼓点和画面都在浏览器里现场生成，每个字、每一拍都对得上。请打开声音。</p>
+  </header>
+
+  <section class="stage" id="stage" aria-label="动画播放区">
+    <canvas id="cv" role="img" aria-label="夜行列车动画：一列夜车从熄灯的城市出发，穿过原野，在日出时抵达"></canvas>
+    <button class="veil" id="veil" type="button">
+      <span class="disc"><svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></span>
+      <span class="t" id="veilT">点击播放</span>
+      <span class="s" id="veilS">约 1 分 43 秒 · 戴耳机更好</span>
+    </button>
+  </section>
+
+  <div class="bar">
+    <button class="pp" id="pp" type="button" aria-label="播放"></button>
+    <input id="seek" type="range" min="0" max="1000" step="2" value="0" aria-label="播放进度">
+    <span class="time" id="tm">0:00 / 1:43</span>
+    <button class="fsb" id="fs" type="button" aria-label="全屏"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </div>
+
+  <section class="lyrics" id="lyr" aria-label="歌词，点击一句可以跳转"></section>
+
+  <p class="note">声音全部由 Web Audio 合成：96 BPM，Am–F–C–G 循环，没有真人演唱。旋律由合成器按歌词逐字演奏，字幕跟着音符一个字一个字点亮。画面由同一个音频时钟驱动，所以鼓点、歌词和动画不会漂移。</p>
+</main>
+
+<script>
+(()=>{
+'use strict';
+/* ========================================================================
+   常量与工具
+   ======================================================================== */
+const W=1280,H=720,GY=556,TAU=Math.PI*2;
+const BPM=96,BEAT=60/BPM,EIGHTH=BEAT/2,BAR=BEAT*4,BARS=40;
+const MUSIC_END=BARS*BAR, END=MUSIC_END+2.6, V=520;
+const clamp=(x,a=0,b=1)=>x<a?a:x>b?b:x;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const sstep=(a,b,x)=>{const u=clamp((x-a)/(b-a));return u*u*(3-2*u)};
+const mix3=(p,q,t)=>[p[0]+(q[0]-p[0])*t,p[1]+(q[1]-p[1])*t,p[2]+(q[2]-p[2])*t];
+const rgb=(a,al=1)=>'rgba('+(a[0]|0)+','+(a[1]|0)+','+(a[2]|0)+','+al+')';
+const hash=n=>{const s=Math.sin(n*127.1+311.7)*43758.5453;return s-Math.floor(s)};
+const hash2=(a,b)=>hash(a*57.13+b*13.7+1.7);
+const RM=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fmt=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+
+/* ========================================================================
+   乐谱：和弦、段落、歌词（每个字对应一个音符）
+   ======================================================================== */
+const CH={Am:{root:45,n:[57,60,64]},F:{root:41,n:[57,60,65]},C:{root:48,n:[55,60,64]},G:{root:43,n:[55,59,62]}};
+const PROG=[
+  'Am','F','C','G',
+  'Am','F','C','G','Am','F','C','G',
+  'F','C','G','Am','F','C','G','Am',
+  'Am','F','C','G','Am','F','C','G',
+  'F','C','G','Am','F','C','G','Am',
+  'Am','F','C','Am'];
+const SECS=[
+  {k:'intro',n:'前奏',bar:0,len:4},{k:'verse',n:'主歌',bar:4,len:8},{k:'chorus',n:'副歌',bar:12,len:8},
+  {k:'verse',n:'主歌',bar:20,len:8},{k:'chorus',n:'副歌',bar:28,len:8},{k:'outro',n:'尾声',bar:36,len:4}];
+const secOfBar=b=>SECS.findIndex(s=>b>=s.bar&&b<s.bar+s.len);
+// 每句占两小节，数字是以八分音符计的字长
+const RH={a:[2,2,2,2,2,2,2,2],b:[1,1,2,2,2,2,2,4],c:[2,2,2,2,2,2,4],d:[1,1,2,2,1,1,2,2,4],e:[1,1,1,1,2,2,2,2,1,3],f:[2,2,4,2,2,4]};
+const M_C1=[77,77,81,77,79,81,79,76,79,72],M_C2=[74,76,79,76,72,74,76,69],M_C3=[77,77,81,77,79,81,76,79,84],M_C4=[74,76,79,79,83,81,76,81];
+const M_V4=[76,79,76,74,72,74,71,67];
+const RAW=[
+  [4,'城市的灯慢慢熄灭','b',[76,76,72,74,76,77,76,72]],
+  [6,'列车载着我向前','c',[79,76,72,74,71,74,79]],
+  [8,'窗外的星星在眨眼','a',[72,76,74,72,77,76,72,69]],
+  [10,'像在说不要回头看','b',M_V4],
+  [12,'夜行列车带我穿过黑夜','e',M_C1],
+  [14,'天亮之前别说再见','a',M_C2],
+  [16,'轰隆隆的节拍像心跳','d',M_C3],
+  [18,'把所有的梦都点燃','b',M_C4],
+  [20,'田野在窗外慢慢后退','d',[76,76,72,74,76,74,77,76,72]],
+  [22,'月亮跟着我走了很远','d',[79,76,72,74,76,79,74,71,79]],
+  [24,'有人在远方点亮了灯','d',[72,76,74,72,76,77,77,76,72]],
+  [26,'告诉我黎明已不远','b',M_V4],
+  [28,'夜行列车带我穿过黑夜','e',M_C1],
+  [30,'天亮之前别说再见','a',M_C2],
+  [32,'轰隆隆的节拍像心跳','d',M_C3],
+  [34,'把整个世界都点燃','b',M_C4],
+  [36,'天亮了 天亮了','f',[81,76,72,81,77,72]],
+  [38,'谢谢你陪我到终点','b',[79,79,76,74,72,76,72,69]]];
+const LINES=[],LYEV=[];
+RAW.forEach(([bar,text,rk,notes],li)=>{
+  const t0=bar*BAR,rh=RH[rk];let e=0,k=0;const chars=[],evs=[];
+  for(const ch of text){
+    if(ch===' '){chars.push({gap:true,ch});continue}
+    const ev={li,ci:chars.length,k,ch,t:t0+e*EIGHTH,d:rh[k]*EIGHTH,midi:notes[k]};
+    chars.push(ev);evs.push(ev);LYEV.push(ev);e+=rh[k];k++;
+  }
+  const last=evs[evs.length-1],si=secOfBar(bar);
+  LINES.push({li,text,bar,t0,t1:last.t+last.d,chars,evs,si,chorus:SECS[si].k==='chorus',outro:SECS[si].k==='outro'});
+});
+const OFFT=LINES[0].evs.map(e=>e.t);   // “灯慢慢熄灭”：每个字熄一批窗
+
+/* ========================================================================
+   音频事件表（以秒计，相对歌曲起点）
+   ======================================================================== */
+const EV=[];
+const ev=(t,type,o)=>EV.push(Object.assign({t:Math.max(0,t),type},o));
+for(let bar=0;bar<BARS;bar++){
+  const si=secOfBar(bar),S=SECS[si],k=S.k,b=bar-S.bar,ch=CH[PROG[bar]],T=bar*BAR,e8=i=>T+i*EIGHTH,last=bar===BARS-1;
+  ev(T-0.04,'pad',{notes:ch.n,dur:BAR+0.1+(last?2.4:0),v:k==='chorus'?1:0.8,bright:k==='chorus'});
+  if(k==='chorus') [[0,1,0],[1,1,0],[2,1,12],[3,1,0],[4,1,0],[5,1,0],[6,1,12],[7,1,0]].forEach(([i,l,o])=>ev(e8(i),'bass',{m:ch.root+o,d:l*EIGHTH*0.9,v:0.6}));
+  else if(k==='verse') [[0,3,0],[3,1,0],[4,2,0],[6,2,7]].forEach(([i,l,o])=>ev(e8(i),'bass',{m:ch.root+o,d:l*EIGHTH*0.92,v:0.62}));
+  else if((k==='intro'&&b>=2)||(k==='outro'&&b<3)) ev(T,'bass',{m:ch.root,d:BAR*0.95,v:0.5});
+  const pat=k==='chorus'?[0,2,1,2,0,2,1,2]:[0,1,2,1,0,1,2,1], av={intro:0.55,verse:0.32,chorus:0.42,outro:0.42}[k];
+  for(let i=0;i<8;i++){ if(last&&i>=4) break; ev(e8(i),'pluck',{m:ch.n[pat[i]]+12,d:0.5,v:av*(i%2?0.8:1)}); }
+  const roll=ps=>ps.forEach((p,i)=>ev(T+p*EIGHTH/2,'snare',{v:0.22+0.5*i/(ps.length-1)}));
+  const hat=(i,v,open)=>ev(e8(i),'hat',{v,open:!!open});
+  if(k==='intro'){
+    if(b>=2){[0,2,4,6].forEach(i=>hat(i,0.07));ev(T,'kick',{v:0.8});}
+    if(b===3){ev(e8(4),'kick',{v:0.8});roll([8,10,12,13,14,15]);}
+  }else if(k==='verse'){
+    ((b%2)?[0,3,4,6]:[0,4]).forEach(i=>ev(e8(i),'kick',{v:0.85}));
+    if(b<7)[2,6].forEach(i=>ev(e8(i),'snare',{v:0.3}));else roll([0,4,8,10,12,13,14,15]);
+    for(let i=0;i<8;i++)hat(i,i%2?0.07:0.04);
+    if(b===0)ev(T,'crash',{v:0.45});
+  }else if(k==='chorus'){
+    [0,2,4,6].forEach(i=>ev(e8(i),'kick',{v:0.95}));
+    [2,6].forEach(i=>{ev(e8(i),'snare',{v:0.5});ev(e8(i),'clap',{v:0.5})});
+    for(let i=0;i<8;i++)hat(i,i%2?0.1:0.06,i===3||i===7);
+    if(b===0)ev(T,'crash',{v:0.8});
+  }else if(k==='outro'&&b===0){ev(T,'kick',{v:0.7});ev(T,'crash',{v:0.4});}
+  if(bar===2||bar===10||bar===26)ev(T,'riser',{dur:2*BAR,v:bar===2?0.6:1});
+  if(last)[81,84,88,93].forEach((m,i)=>ev(e8(4+i),'pluck',{m,d:2.4,v:0.5}));
+}
+LYEV.forEach(e=>{
+  const ch=LINES[e.li].chorus;
+  ev(e.t,'lead',{m:e.midi,d:e.d*0.94,v:ch?1:0.85});
+  if(ch)ev(e.t,'lead',{m:e.midi-12,d:e.d*0.94,v:0.35});
+});
+EV.sort((a,b)=>a.t-b.t);
+
+/* ========================================================================
+   合成器
+   ======================================================================== */
+let ctx=null,master,ana,rvIn,dlIn,NB,FD=null;
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+function setupGraph(ac){
+  ctx=ac;
+  master=ac.createGain();master.gain.value=0.62;
+  const comp=ac.createDynamicsCompressor();
+  comp.threshold.value=-16;comp.knee.value=18;comp.ratio.value=3.5;comp.attack.value=0.006;comp.release.value=0.22;
+  master.connect(comp);
+  if(ac.createAnalyser){ana=ac.createAnalyser();ana.fftSize=256;ana.smoothingTimeConstant=0.78;comp.connect(ana);ana.connect(ac.destination);FD=new Uint8Array(ana.frequencyBinCount);}
+  else comp.connect(ac.destination);
+  // 混响
+  const len=Math.floor(ac.sampleRate*2.4),ir=ac.createBuffer(2,len,ac.sampleRate);
+  for(let c=0;c<2;c++){const d=ir.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.6);}
+  rvIn=ac.createConvolver();rvIn.buffer=ir;const rvOut=ac.createGain();rvOut.gain.value=0.5;rvIn.connect(rvOut);rvOut.connect(master);
+  // 回声（附点八分）
+  dlIn=ac.createGain();const dl=ac.createDelay(2),fb=ac.createGain(),lp=ac.createBiquadFilter(),dOut=ac.createGain();
+  dl.delayTime.value=BEAT*0.75;fb.gain.value=0.36;lp.type='lowpass';lp.frequency.value=2400;dOut.gain.value=0.5;
+  dlIn.connect(dl);dl.connect(lp);lp.connect(fb);fb.connect(dl);lp.connect(dOut);dOut.connect(master);
+  // 噪声
+  NB=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate);const nd=NB.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+}
+function mkSession(){
+  const dry=ctx.createGain(),rv=ctx.createGain(),dl=ctx.createGain();
+  dry.connect(master);rv.connect(rvIn);dl.connect(dlIn);return{dry,rv,dl};
+}
+function killSession(S){
+  const n=ctx.currentTime;
+  [S.dry,S.rv,S.dl].forEach(g=>{g.gain.cancelScheduledValues(n);g.gain.setTargetAtTime(0,n,0.02)});
+  setTimeout(()=>{try{S.dry.disconnect();S.rv.disconnect();S.dl.disconnect()}catch(e){}},500);
+}
+function conn(node,S,rv,dl){
+  node.connect(S.dry);
+  if(rv){const g=ctx.createGain();g.gain.value=rv;node.connect(g);g.connect(S.rv)}
+  if(dl){const g=ctx.createGain();g.gain.value=dl;node.connect(g);g.connect(S.dl)}
+}
+function noise(w,dur,loop){const s=ctx.createBufferSource();s.buffer=NB;s.loop=!!loop;s.start(w,loop?0:Math.random()*0.9);s.stop(w+dur);return s}
+const osc=(type,f)=>{const o=ctx.createOscillator();o.type=type;o.frequency.value=f;return o};
+const vKick=(w,v,S)=>{const o=osc('sine',155),g=ctx.createGain();o.frequency.setValueAtTime(155,w);o.frequency.exponentialRampToValueAtTime(46,w+0.13);
+  g.gain.setValueAtTime(0.0001,w);g.gain.linearRampToValueAtTime(v,w+0.004);g.gain.exponentialRampToValueAtTime(0.0001,w+0.42);o.connect(g);conn(g,S);o.start(w);o.stop(w+0.45)};
+const vSnare=(w,v,S)=>{const n=noise(w,0.25),f=ctx.createBiquadFilter(),g=ctx.createGain();f.type='highpass';f.frequency.value=1700;
+  g.gain.setValueAtTime(v*0.8,w);g.gain.exponentialRampToValueAtTime(0.0001,w+0.2);n.connect(f);f.connect(g);conn(g,S,0.18);
+  const o=osc('triangle',220),g2=ctx.createGain();o.frequency.setValueAtTime(220,w);o.frequency.exponentialRampToValueAtTime(140,w+0.08);
+  g2.gain.setValueAtTime(v*0.6,w);g2.gain.exponentialRampToValueAtTime(0.0001,w+0.12);o.connect(g2);conn(g2,S);o.start(w);o.stop(w+0.14)};
+const vClap=(w,v,S)=>{for(let i=0;i<3;i++){const t=w+i*0.011,n=noise(t,0.2),f=ctx.createBiquadFilter(),g=ctx.createGain();f.type='bandpass';f.frequency.value=1500;f.Q.value=0.9;
+  g.gain.setValueAtTime(v*(i<2?0.5:0.9),t);g.gain.exponentialRampToValueAtTime(0.0001,t+(i<2?0.02:0.16));n.connect(f);f.connect(g);conn(g,S,i===2?0.3:0)}};
+const vHat=(w,v,open,S)=>{const d=open?0.16:0.045,n=noise(w,d+0.02),f=ctx.createBiquadFilter(),g=ctx.createGain();f.type='highpass';f.frequency.value=7500;
+  g.gain.setValueAtTime(v,w);g.gain.exponentialRampToValueAtTime(0.0001,w+d);n.connect(f);f.connect(g);conn(g,S,open?0.1:0)};
+const vCrash=(w,v,S)=>{const n=noise(w,1.8),f=ctx.createBiquadFilter(),g=ctx.createGain();f.type='highpass';f.frequency.value=4500;
+  g.gain.setValueAtTime(v*0.4,w);g.gain.exponentialRampToValueAtTime(0.0001,w+1.6);n.connect(f);f.connect(g);conn(g,S,0.4)};
+const vRiser=(w,dur,v,S)=>{const n=noise(w,dur+0.1,true),f=ctx.createBiquadFilter(),g=ctx.createGain();f.type='bandpass';f.Q.value=1.8;
+  f.frequency.setValueAtTime(300,w);f.frequency.exponentialRampToValueAtTime(7000,w+dur);
+  g.gain.setValueAtTime(0.0001,w);g.gain.linearRampToValueAtTime(v*0.2,w+dur*0.97);g.gain.linearRampToValueAtTime(0.0001,w+dur+0.05);n.connect(f);f.connect(g);conn(g,S,0.3)};
+const vBass=(w,m,d,v,S)=>{const f=mtof(m),o1=osc('sawtooth',f),o2=osc('sine',f),g1=ctx.createGain(),g2=ctx.createGain(),lp=ctx.createBiquadFilter(),g=ctx.createGain();
+  g1.gain.value=0.35;g2.gain.value=0.6;lp.type='lowpass';lp.frequency.setValueAtTime(900,w);lp.frequency.exponentialRampToValueAtTime(260,w+0.18);
+  g.gain.setValueAtTime(0.0001,w);g.gain.linearRampToValueAtTime(v*0.55,w+0.012);g.gain.setValueAtTime(v*0.55,w+Math.max(0.02,d-0.05));g.gain.linearRampToValueAtTime(0.0001,w+d+0.06);
+  o1.connect(g1);g1.connect(lp);lp.connect(g);o2.connect(g2);g2.connect(g);conn(g,S);o1.start(w);o2.start(w);o1.stop(w+d+0.1);o2.stop(w+d+0.1)};
+const vPad=(w,notes,dur,v,bright,S)=>{const g=ctx.createGain(),lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=bright?1700:1000;lp.Q.value=0.3;
+  const pk=0.085*v;g.gain.setValueAtTime(0.0001,w);g.gain.linearRampToValueAtTime(pk,w+0.45);g.gain.setValueAtTime(pk,w+dur-0.1);g.gain.linearRampToValueAtTime(0.0001,w+dur+0.9);
+  lp.connect(g);conn(g,S,0.45);
+  notes.forEach(n=>[-8,8].forEach(dt=>{const o=osc('sawtooth',mtof(n));o.detune.value=dt;const og=ctx.createGain();og.gain.value=0.5/notes.length*1.3;o.connect(og);og.connect(lp);o.start(w);o.stop(w+dur+1)}))};
+const vPluck=(w,m,d,v,S)=>{const f=mtof(m),o1=osc('triangle',f),o2=osc('square',f),g2=ctx.createGain(),lp=ctx.createBiquadFilter(),g=ctx.createGain();
+  g2.gain.value=0.22;lp.type='lowpass';lp.frequency.setValueAtTime(3600,w);lp.frequency.exponentialRampToValueAtTime(700,w+0.22);
+  g.gain.setValueAtTime(0.0001,w);g.gain.linearRampToValueAtTime(v*0.3,w+0.005);g.gain.exponentialRampToValueAtTime(0.0001,w+d);
+  o1.connect(lp);o2.connect(g2);g2.connect(lp);lp.connect(g);conn(g,S,0.3,0.35);o1.start(w);o2.start(w);o1.stop(w+d+0.05);o2.stop(w+d+0.05)};
+const vLead=(w,m,d,v,S)=>{const f=mtof(m),o1=osc('sawtooth',f),o2=osc('triangle',f),g1=ctx.createGain(),g2=ctx.createGain(),pk=ctx.createBiquadFilter(),lp=ctx.createBiquadFilter(),g=ctx.createGain();
+  g1.gain.value=0.16;g2.gain.value=0.5;pk.type='peaking';pk.frequency.value=1100;pk.gain.value=5;pk.Q.value=1;lp.type='lowpass';lp.frequency.value=3200;
+  const lfo=osc('sine',5.4),lg=ctx.createGain();lg.gain.setValueAtTime(0,w);lg.gain.linearRampToValueAtTime(f*0.006,w+Math.min(0.35,d*0.7));lfo.connect(lg);lg.connect(o1.frequency);lg.connect(o2.frequency);
+  const pkv=v*0.22;g.gain.setValueAtTime(0.0001,w);g.gain.linearRampToValueAtTime(pkv,w+0.03);g.gain.setValueAtTime(pkv,w+d*0.9);g.gain.linearRampToValueAtTime(0.0001,w+d+0.14);
+  o1.connect(g1);o2.connect(g2);g1.connect(pk);g2.connect(pk);pk.connect(lp);lp.connect(g);conn(g,S,0.28,0.3);
+  [o1,o2,lfo].forEach(o=>{o.start(w);o.stop(w+d+0.2)})};
+function trigger(e,w,S){
+  switch(e.type){
+    case'kick':vKick(w,e.v,S);break;case'snare':vSnare(w,e.v,S);break;case'clap':vClap(w,e.v,S);break;case'hat':vHat(w,e.v,e.open,S);break;
+    case'crash':vCrash(w,e.v,S);break;case'riser':vRiser(w,e.dur,e.v,S);break;case'bass':vBass(w,e.m,e.d,e.v,S);break;
+    case'pad':vPad(w,e.notes,e.dur,e.v,e.bright,S);break;case'pluck':vPluck(w,e.m,e.d,e.v,S);break;case'lead':vLead(w,e.m,e.d,e.v,S);break;
+  }
+}
+
+/* ========================================================================
+   画面：时间线函数
+   ======================================================================== */
+const PAL=[ // t, 天顶, 天中, 地平线, 暗部, 光色
+  [0,[5,7,26],[14,20,62],[34,36,96],[4,6,20],[120,150,255]],
+  [48,[5,7,26],[14,20,62],[34,40,100],[4,6,20],[120,150,255]],
+  [56,[8,8,34],[28,22,80],[70,40,110],[8,6,26],[180,140,255]],
+  [66,[26,24,84],[96,52,128],[230,110,120],[22,14,40],[255,150,130]],
+  [76,[60,84,170],[214,126,150],[255,176,108],[44,28,56],[255,190,130]],
+  [88,[104,160,226],[255,196,160],[255,224,150],[64,44,76],[255,226,170]],
+  [104,[124,184,240],[255,214,176],[255,236,184],[70,52,84],[255,236,190]]];
+function palAt(t){
+  let i=0;while(i<PAL.length-2&&t>PAL[i+1][0])i++;
+  const a=PAL[i],b=PAL[i+1],u=sstep(a[0],b[0],t);
+  return{top:mix3(a[1],b[1],u),mid:mix3(a[2],b[2],u),bot:mix3(a[3],b[3],u),shade:mix3(a[4],b[4],u),glow:mix3(a[5],b[5],u)};
+}
+const speedAt=t=>sstep(10,20,t)*(1-0.2*sstep(50,54,t)+0.3*sstep(70,74,t))*(1-sstep(90,99.5,t));
+const DT=0.02,DN=Math.ceil((END+2)/DT),DIST=new Float32Array(DN+2);
+{let d=0;for(let i=0;i<=DN+1;i++){DIST[i]=d;d+=speedAt(i*DT)*V*DT}}
+const distAt=t=>{const x=clamp(t/DT,0,DN),i=Math.floor(x);return DIST[i]+(DIST[i+1]-DIST[i])*(x-i)};
+const EN_SEC=[0.35,0.6,1,0.62,1.05,0.32];
+function energyAt(t){
+  const bar=t/BAR;let s=0;SECS.forEach((x,i)=>{if(bar>=x.bar)s=i});
+  const S=SECS[s],st=S.bar*BAR,prev=EN_SEC[Math.max(0,s-1)],cur=EN_SEC[s];
+  let e=lerp(s?prev:cur,cur,sstep(st,st+1.2,t));
+  if(S.k==='verse')e=lerp(e,0.95,sstep((S.bar+S.len-1)*BAR,(S.bar+S.len)*BAR,t));
+  return e;
+}
+const evPulse=(li,t,k)=>{let m=0;for(const e of LINES[li].evs){const a=t-e.t;if(a>=0&&a<3)m=Math.max(m,Math.exp(-a*k))}return m};
+
+/* ========================================================================
+   画面：世界数据
+   ======================================================================== */
+const STARS=Array.from({length:260},(_,i)=>({x:hash(i*1.3)*W,y:Math.pow(hash(i*2.1+5),1.3)*440,r:0.5+Math.pow(hash(i*3.7+9),3)*1.5,ph:hash(i*4.9)*TAU,sp:0.8+hash(i*6.1)*2,g:i%8}));
+const CITY={n0:[],f0:[],n1:[],f1:[]};
+function genCity(arr,start,len,seed,wMin,wR,hMin,hR,cl){
+  let x=start,i=0;
+  while(x<start+len){
+    const w=wMin+hash(seed+i*3.3)*wR,h=hMin+Math.pow(hash(seed+i*7.7+1),1.4)*hR;
+    arr.push({x,w,h,id:seed+i,cl,roof:hash(seed+i*5.1)<0.35?1:(hash(seed+i*9.3)<0.3?2:0),ant:hash(seed+i*2.9)<0.22});
+    x+=w+hash(seed+i*1.9)*5;i++;
+  }
+}
+genCity(CITY.n0,-120,1900,100,64,70,100,230,0);
+genCity(CITY.f0,-60,1700,5000,30,40,46,120,0);
+genCity(CITY.n1,distAt(90)*0.35+1250,1900,9000,64,70,90,200,1);
+genCity(CITY.f1,distAt(90)*0.12+1050,1600,13000,30,40,40,110,1);
+const BEACON=LINES[10].evs.map(e=>150+e.k*120+distAt(e.t)*0.2);
+const FIREFLY=Array.from({length:70},(_,i)=>({x:hash(i*3.3)*W*1.5,y:440+hash(i*5.5)*120,ph:hash(i*7.7)*TAU,f:0.5+hash(i*9.1)}));
+const CLOUDS=Array.from({length:8},(_,i)=>({x:hash(i*2.2)*(W+500),y:90+hash(i*4.4)*240,s:0.7+hash(i*6.6)*0.9,sp:3+hash(i*8.8)*5}));
+const SPD_LINES=Array.from({length:22},(_,i)=>({y:20+hash(i*1.7)*450,v:2000+hash(i*2.9)*1400,len:160+hash(i*3.9)*260,o:hash(i*5.3)*4000}));
+
+/* ========================================================================
+   画面：绘制
+   ======================================================================== */
+const cv=document.getElementById('cv'),c=cv.getContext('2d');
+let scale=1,vig=null;
+const F_SERIF='"Noto Serif SC","Songti SC","STSong","SimSun",serif',F_BRUSH='"Ma Shan Zheng","STKaiti","KaiTi","Kaiti SC",serif';
+function resize(){
+  const r=cv.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=Math.max(320,Math.round(r.width*dpr));cv.width=w;cv.height=Math.round(w*H/W);scale=cv.width/W;vig=null;
+}
+function rr(x,y,w,h,r){c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+function fillRects(list,style){if(!list.length)return;c.fillStyle=style;c.beginPath();for(const r of list)c.rect(r[0],r[1],r[2],r[3]);c.fill()}
+const ridge=(x,s)=>Math.sin(x*0.0061+s)*0.5+Math.sin(x*0.0137+s*2.3)*0.3+Math.sin(x*0.029+s*4.1)*0.2;
+const ridgeM=(x,s)=>1-(Math.abs(Math.sin(x*0.0042+s))*0.6+Math.abs(Math.sin(x*0.0113+s*1.7))*0.4);
+
+const PT=[],SP=[];let prevT=-1,lastBi=0;
+
+function drawSky(pal,t,dawn){
+  const g=c.createLinearGradient(0,0,0,H*0.74);
+  g.addColorStop(0,rgb(pal.top));g.addColorStop(0.45,rgb(pal.mid));g.addColorStop(0.8,rgb(pal.bot));
+  c.fillStyle=g;c.fillRect(-20,-20,W+40,H+40);
+}
+function drawStars(t,dist,kick,chA,nightA){
+  if(nightA<=0.01)return;
+  const fl=new Array(8).fill(0);
+  for(const e of LINES[2].evs){const a=t-e.t;if(a>=0&&a<2)fl[e.ci%8]=Math.max(fl[e.ci%8],Math.exp(-a*3))}
+  for(const s of STARS){
+    let x=((s.x-dist*0.01*(0.5+s.r*0.5))%W+W)%W;
+    const f=fl[s.g],tw=0.5+0.35*Math.sin(t*s.sp+s.ph)+0.15*kick*chA;
+    const a=clamp(tw)*nightA,r=s.r*(1+0.4*kick*chA)+f*2.2;
+    c.fillStyle='rgba(235,240,255,'+clamp(a+f)+')';c.fillRect(x-r/2,s.y-r/2,r,r);
+    if(f>0.15){c.fillStyle='rgba(255,246,220,'+(f*0.8)+')';const L=5+f*12;c.fillRect(x-L,s.y-0.5,L*2,1);c.fillRect(x-0.5,s.y-L,1,L*2)}
+  }
+}
+function drawAurora(t,amt){
+  if(amt<=0.01)return;
+  c.save();c.globalCompositeOperation='lighter';
+  const hues=[[60,255,200],[120,150,255],[255,90,190]];
+  for(let k=0;k<3;k++){
+    const base=120+k*44,hue=hues[k],g=c.createLinearGradient(0,base-110,0,base+190);
+    g.addColorStop(0,rgb(hue,0));g.addColorStop(0.4,rgb(hue,0.30*amt));g.addColorStop(1,rgb(hue,0));
+    const pts=[];for(let x=0;x<=W;x+=16)pts.push([x,base+Math.sin(x*0.0045+t*0.5+k*1.7)*46+Math.sin(x*0.012-t*0.9+k)*16]);
+    c.fillStyle=g;c.beginPath();c.moveTo(0,pts[0][1]-70);
+    pts.forEach(p=>c.lineTo(p[0],p[1]-70*(0.8+0.3*Math.sin(p[0]*0.02+t+k))));
+    for(let i=pts.length-1;i>=0;i--)c.lineTo(pts[i][0],pts[i][1]+110);
+    c.closePath();c.fill();
+    c.lineWidth=2;
+    for(let x=0;x<W;x+=14){const p=pts[Math.min(pts.length-1,(x/16)|0)],a=(0.5+0.5*Math.sin(x*0.07+t*1.3+k*2))*0.10*amt;
+      c.strokeStyle=rgb(hue,a);c.beginPath();c.moveTo(x,p[1]-40);c.lineTo(x,p[1]+80+30*Math.sin(x*0.03+t));c.stroke()}
+  }
+  c.restore();
+}
+function drawClouds(pal,t,dist){
+  const a=sstep(58,72,t);if(a<=0.01)return;
+  const lit=mix3(pal.glow,[255,255,255],0.2),body=mix3(pal.mid,pal.top,0.3);
+  for(const cl of CLOUDS){
+    const x=(((cl.x-dist*0.03-t*cl.sp)%(W+500))+(W+500))%(W+500)-250;
+    for(let j=0;j<5;j++){
+      const px=x+(j-2)*52*cl.s,py=cl.y+Math.sin(j*1.7)*10*cl.s,r=62*cl.s*(1-Math.abs(j-2)*0.12);
+      const g=c.createRadialGradient(px,py+r*0.25,2,px,py,r);g.addColorStop(0,rgb(lit,0.50*a));g.addColorStop(0.55,rgb(body,0.28*a));g.addColorStop(1,rgb(body,0));
+      c.fillStyle=g;c.save();c.translate(px,py);c.scale(1.9,0.55);c.translate(-px,-py);c.beginPath();c.arc(px,py,r,0,TAU);c.fill();c.restore();
+    }
+  }
+}
+function specRing(cx,cy,R,col,al,kick,t){
+  c.save();c.globalCompositeOperation='lighter';c.lineCap='round';c.lineWidth=3;
+  const n=56;
+  for(let i=0;i<n;i++){
+    const v=FD&&playingNow?FD[Math.min(FD.length-1,2+((i<n/2?i:n-i)*0.9|0))]/255:(0.18+0.35*hash(i*1.7+Math.floor(t*3)))*kick;
+    const a=i/n*TAU-Math.PI/2,r0=R+12,r1=r0+4+v*v*46;
+    c.strokeStyle=rgb(col,al*(0.25+0.6*v));c.beginPath();c.moveTo(cx+Math.cos(a)*r0,cy+Math.sin(a)*r0);c.lineTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);c.stroke();
+  }
+  c.restore();
+}
+function drawMoon(pal,t,kick,pulse){
+  const a=1-sstep(60,80,t);if(a<=0.01)return;
+  const mx=980-t*2.0,my=140+Math.max(0,t-58)*5,R=44*(1+0.12*pulse);
+  c.save();c.globalCompositeOperation='lighter';
+  let g=c.createRadialGradient(mx,my,R*0.6,mx,my,R*5.5);g.addColorStop(0,rgb([170,190,255],0.30*a*(1+pulse)));g.addColorStop(1,rgb([170,190,255],0));
+  c.fillStyle=g;c.beginPath();c.arc(mx,my,R*5.5,0,TAU);c.fill();c.restore();
+  g=c.createRadialGradient(mx-R*0.3,my-R*0.3,R*0.2,mx,my,R);g.addColorStop(0,'rgba(252,252,255,'+a+')');g.addColorStop(1,'rgba(206,214,242,'+a+')');
+  c.fillStyle=g;c.beginPath();c.arc(mx,my,R,0,TAU);c.fill();
+  c.fillStyle='rgba(168,178,214,'+(0.35*a)+')';
+  [[-0.35,-0.2,0.2],[0.25,0.15,0.28],[-0.1,0.45,0.14],[0.45,-0.35,0.11]].forEach(q=>{c.beginPath();c.arc(mx+q[0]*R,my+q[1]*R,q[2]*R,0,TAU);c.fill()});
+  specRing(mx,my,R,[190,205,255],0.8*a,kick,t);
+}
+function drawSun(pal,t,kick,pulse){
+  const rise=sstep(70,96,t),sy=lerp(570,300,rise),sx=860;
+  if(rise<=0.001)return;
+  c.save();c.globalCompositeOperation='lighter';
+  let g=c.createRadialGradient(sx,Math.min(sy,470),10,sx,Math.min(sy,470),760);
+  g.addColorStop(0,rgb(pal.glow,0.45*(0.7+0.3*rise)));g.addColorStop(1,rgb(pal.glow,0));c.fillStyle=g;c.fillRect(0,0,W,H);
+  if(sy<470){
+    const R=62*(1+0.05*kick+0.12*pulse)+6*rise;
+    g=c.createRadialGradient(sx,sy,R*0.5,sx,sy,R*4.2);g.addColorStop(0,'rgba(255,214,140,0.55)');g.addColorStop(1,'rgba(255,214,140,0)');
+    c.fillStyle=g;c.beginPath();c.arc(sx,sy,R*4.2,0,TAU);c.fill();
+    const rg=c.createRadialGradient(sx,sy,0,sx,sy,1000);rg.addColorStop(0,'rgba(255,230,170,'+(0.20+0.12*pulse)+')');rg.addColorStop(1,'rgba(255,230,170,0)');
+    c.fillStyle=rg;
+    for(let i=0;i<14;i++){const a=i/14*TAU+t*0.03;c.beginPath();c.moveTo(sx,sy);c.lineTo(sx+Math.cos(a-0.07)*1100,sy+Math.sin(a-0.07)*1100);c.lineTo(sx+Math.cos(a+0.07)*1100,sy+Math.sin(a+0.07)*1100);c.fill()}
+    c.restore();
+    g=c.createRadialGradient(sx,sy,0,sx,sy,R);g.addColorStop(0,'rgb(255,250,226)');g.addColorStop(1,'rgb(255,214,140)');
+    c.fillStyle=g;c.beginPath();c.arc(sx,sy,R,0,TAU);c.fill();
+    specRing(sx,sy,R,[255,214,140],0.9,kick,t);
+  }else c.restore();
+}
+function drawMountains(col,off){
+  c.beginPath();c.moveTo(-10,H);
+  for(let x=-10;x<=W+10;x+=10)c.lineTo(x,452-90*(0.35+0.65*ridgeM(x+off,2.1)));
+  c.lineTo(W+10,H);c.closePath();c.fillStyle=col;c.fill();
+}
+function drawHills(col,off,base,amp,seed){
+  c.beginPath();c.moveTo(-10,H);
+  for(let x=-10;x<=W+10;x+=10)c.lineTo(x,base-amp*(0.55+0.45*ridge(x+off,seed)));
+  c.lineTo(W+10,H);c.closePath();c.fillStyle=col;c.fill();
+}
+function winLit(b,r,q,t,day){
+  const h1=hash2(b.id*3.1+b.cl*100,r*19+q*7);
+  if(b.cl===0){
+    const g=Math.floor(hash(h1*37.7)*8),tOff=OFFT[g]+hash(h1*91)*0.25;
+    if(t<tOff){
+      if(t<10&&h1<0.1&&Math.floor(t/(BEAT*2)+h1*50)%2)return 0;
+      return h1<0.78?1:0;
+    }
+    return h1>0.93?0.85:0;
+  }
+  return h1<0.22?0.9*(1-day*0.85):0;
+}
+function drawCity(list,off,base,body,far,pal,t,day,bp){
+  const rim=rgb(pal.glow,far?0.12:0.22),warm=[],pale=[],dim=[],reds=[];
+  const cw=far?7:15,rh=far?9:20,ww=far?3:7,wh=far?4:10;
+  for(const b of list){
+    const sx=b.x-off;if(sx>W+4||sx+b.w<-4)continue;
+    const top=base-b.h;
+    c.fillStyle=body;c.fillRect(sx,top,b.w,b.h+3);
+    if(b.roof===1)c.fillRect(sx+b.w*0.2,top-10,b.w*0.6,10);else if(b.roof===2)c.fillRect(sx+b.w*0.35,top-18,b.w*0.3,18);
+    if(b.ant){c.fillRect(sx+b.w*0.5-1,top-34,2,34);reds.push([sx+b.w*0.5-2,top-37,4,4])}
+    c.fillStyle=rim;c.fillRect(sx,top,b.w,1.4);
+    const cols=Math.max(1,Math.floor((b.w-6)/cw)),rows=Math.floor((b.h-14)/rh),ox=sx+(b.w-cols*cw)/2+(cw-ww)/2;
+    for(let r=0;r<rows;r++)for(let q=0;q<cols;q++){
+      const a=winLit(b,r,q,t,day);if(a<=0)continue;
+      const rect=[ox+q*cw,top+10+r*rh,ww,wh];
+      if(a>=0.95)(hash2(b.id,r*9+q)>0.86?pale:warm).push(rect);else dim.push(rect);
+    }
+  }
+  fillRects(warm,'rgba(255,214,128,0.92)');fillRects(pale,'rgba(196,226,255,0.88)');fillRects(dim,'rgba(255,200,120,0.55)');
+  fillRects(reds,'rgba(255,70,70,'+(bp<0.3?1:0.25)+')');
+}
+function drawTrees(off,base,col){
+  const sp=34,k0=Math.floor(off/sp)-1;c.beginPath();
+  for(let k=k0;k<=k0+Math.ceil(W/sp)+3;k++){
+    const x=k*sp-off+hash(k)*20-10,h=34+hash(k+99)*60,w=h*0.36;
+    c.moveTo(x-w,base);c.lineTo(x,base-h);c.lineTo(x+w,base);
+    c.moveTo(x-w*0.7,base-h*0.35);c.lineTo(x,base-h*1.12);c.lineTo(x+w*0.7,base-h*0.35);
+  }
+  c.fillStyle=col;c.fill();
+}
+function drawPoles(dist,col,pal){
+  const S=312,off=((dist*0.9+40)%S+S)%S;c.strokeStyle=col;c.fillStyle=col;c.lineWidth=1.3;
+  for(let x=-off;x<W+S;x+=S){
+    c.fillRect(x-2,430,4,GY-430);c.fillRect(x-17,440,34,3);
+    c.beginPath();c.moveTo(x-15,443);c.quadraticCurveTo(x+S/2,443+20,x+S-15,443);c.stroke();
+    c.beginPath();c.moveTo(x+15,443);c.quadraticCurveTo(x+S/2+30,443+18,x+S+15,443);c.stroke();
+  }
+}
+function wheel(x,y,r,a,rim,spokes){
+  c.fillStyle=spokes.fill;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();
+  c.strokeStyle=rim;c.lineWidth=2;c.stroke();
+  c.strokeStyle=spokes.line;c.lineWidth=1.6;c.beginPath();
+  for(let i=0;i<6;i++){const q=a+i*Math.PI/3;c.moveTo(x,y);c.lineTo(x+Math.cos(q)*r*0.86,y+Math.sin(q)*r*0.86)}
+  c.stroke();
+}
+const LOCO_X=735;
+function drawTrain(t,pal,spd,dist,kick,day){
+  const body=rgb(mix3(pal.shade,[24,28,56],0.5)),bodyC=mix3(pal.shade,[24,28,56],0.5),roof=rgb(mix3(pal.shade,pal.glow,0.22)),rim=rgb(pal.glow,0.55),rimL=rgb(pal.glow,0.35);
+  const bob=i=>Math.sin(dist/26+i*0.9)*1.1*spd-kick*1.0*spd;
+  const lit=1-day*0.78,sp={fill:body,line:rimL};
+  // 车厢
+  [461,279,97,-85].forEach((x,i)=>{
+    c.save();c.translate(x,GY+bob(i));
+    c.fillStyle=body;c.beginPath();rr(0,-88,176,70,7);c.fill();
+    c.fillStyle=roof;c.fillRect(6,-88,164,3);
+    c.fillStyle='rgba(226,90,66,0.85)';c.fillRect(0,-30,176,5);
+    c.fillStyle=body;c.fillRect(8,-18,160,8);
+    const wins=[];
+    for(let j=0;j<6;j++){
+      const wx=14+j*27,a=lit*clamp(0.74+0.2*Math.sin(t*0.9+i*1.3+j*2.1)+0.14*kick);
+      c.fillStyle='rgba(255,206,120,'+a+')';c.fillRect(wx,-76,17,20);
+      if(hash(i*7+j)<0.55&&a>0.2){c.fillStyle=body;c.beginPath();c.arc(wx+8.5,-68,3.6,0,TAU);c.fill();c.fillRect(wx+3,-64,11,8)}
+      wins.push([wx-4,-80,25,28,a]);
+    }
+    c.save();c.globalCompositeOperation='lighter';
+    for(const w of wins){c.fillStyle='rgba(255,176,90,'+(w[4]*0.10)+')';c.fillRect(w[0],w[1],w[2],w[3])}
+    c.restore();
+    [30,146].forEach(wx=>wheel(wx,-9,9,dist/9,rim,sp));
+    c.fillStyle=body;c.fillRect(176,-24,10,4);
+    c.restore();
+  });
+  // 蒸汽机车
+  c.save();c.translate(LOCO_X,GY+bob(-1));
+  c.fillStyle=body;
+  c.fillRect(14,-46,226,10);                                   // 车架
+  c.beginPath();rr(76,-98,150,54,20);c.fill();                 // 锅炉
+  c.beginPath();rr(128,-112,22,16,6);c.fill();                 // 汽包
+  c.beginPath();c.moveTo(190,-98);c.lineTo(194,-130);c.lineTo(216,-130);c.lineTo(210,-98);c.closePath();c.fill();c.fillRect(190,-134,30,6); // 烟囱
+  c.fillRect(0,-120,76,76);c.fillRect(-6,-126,88,8);          // 驾驶室
+  c.fillRect(-98,-82,92,52);                                   // 煤水车
+  c.beginPath();c.moveTo(-92,-82);c.lineTo(-80,-96);c.lineTo(-50,-92);c.lineTo(-20,-98);c.lineTo(-8,-82);c.closePath();c.fill();
+  c.beginPath();c.moveTo(232,-6);c.lineTo(224,-36);c.lineTo(256,-2);c.closePath();c.fill();  // 排障器
+  c.fillStyle=roof;c.fillRect(-6,-126,88,2.5);c.fillRect(190,-134,30,2);
+  c.strokeStyle=rimL;c.lineWidth=1.4;c.beginPath();c.moveTo(94,-98);c.lineTo(206,-98);c.stroke();
+  c.strokeStyle='rgba(255,207,138,0.22)';c.beginPath();[104,138,172].forEach(x=>{c.moveTo(x,-96);c.lineTo(x,-46)});c.stroke();
+  // 驾驶室窗
+  c.fillStyle='rgba(255,196,110,'+(0.9*lit)+')';c.fillRect(12,-104,24,26);c.fillRect(44,-104,20,26);
+  c.fillStyle=body;c.fillRect(37,-104,6,26);
+  // 车轮和连杆
+  const a=dist/22;
+  [92,142,192].forEach(x=>wheel(x,-22,22,a,rim,sp));
+  wheel(228,-11,11,dist/11,rim,sp);[-78,-24].forEach(x=>wheel(x,-14,13,dist/13,rim,sp));
+  c.strokeStyle=rim;c.lineWidth=4;c.lineCap='round';c.beginPath();
+  c.moveTo(92+Math.cos(a)*12,-22+Math.sin(a)*12);c.lineTo(192+Math.cos(a)*12,-22+Math.sin(a)*12);c.stroke();c.lineCap='butt';
+  // 头灯
+  c.fillStyle='rgb(255,244,200)';c.beginPath();c.arc(238,-76,6,0,TAU);c.fill();
+  c.fillStyle=body;c.fillRect(218,-84,8,16);
+  c.restore();
+}
+function drawBeam(t,spd,day,kick,flare){
+  const b=(1-day*0.88)*(0.5+0.28*kick+0.55*flare);if(b<=0.02)return;
+  const x0=LOCO_X+238,y0=GY-76+Math.sin(0)*0;
+  c.save();c.globalCompositeOperation='lighter';
+  const g=c.createLinearGradient(x0,0,x0+620+flare*260,0);g.addColorStop(0,'rgba(255,240,200,'+(0.55*b)+')');g.addColorStop(1,'rgba(255,240,200,0)');
+  c.fillStyle=g;c.beginPath();c.moveTo(x0,y0-3);c.lineTo(x0+760,y0-120-flare*60);c.lineTo(x0+760,y0+100);c.lineTo(x0,y0+4);c.closePath();c.fill();
+  const g2=c.createRadialGradient(x0,y0,2,x0,y0,46);g2.addColorStop(0,'rgba(255,244,210,'+(0.9*b)+')');g2.addColorStop(1,'rgba(255,244,210,0)');
+  c.fillStyle=g2;c.beginPath();c.arc(x0,y0,46,0,TAU);c.fill();c.restore();
+}
+function spawnBeat(pal,spd,en){
+  const cx=LOCO_X+205,cy=GY-132;
+  PT.push({k:'puff',x:cx,y:cy,vx:-(V*spd*0.5)-12,vy:-24-Math.random()*14,age:0,life:3.4,r:9+Math.random()*4});
+  if(en>0.9)for(let i=0;i<4;i++)PT.push({k:'ember',x:cx+(Math.random()-0.5)*6,y:cy,vx:-(V*spd*0.7)*(0.5+Math.random())-20,vy:-60-Math.random()*90,age:0,life:0.9+Math.random()*0.7,r:1.6+Math.random()*1.4});
+}
+function stepParticles(dt){for(const L of [PT,SP])for(let i=L.length-1;i>=0;i--){const p=L[i];p.age+=dt;if(p.age>=p.life){L.splice(i,1);continue}p.x+=p.vx*dt;p.y+=p.vy*dt;if(p.k==='ember')p.vy+=40*dt;if(p.k==='spark')p.vy+=300*dt}}
+function drawSmoke(pal){
+  const sm=mix3(mix3(pal.mid,pal.glow,0.5),[235,238,255],0.35);
+  for(const p of PT){if(p.k!=='puff')continue;const u=p.age/p.life;c.fillStyle=rgb(sm,Math.pow(1-u,1.4)*0.5);c.beginPath();c.arc(p.x,p.y,p.r+p.age*15,0,TAU);c.fill()}
+  c.save();c.globalCompositeOperation='lighter';
+  for(const p of PT){if(p.k!=='ember')continue;const u=p.age/p.life;c.fillStyle='rgba(255,170,80,'+(1-u)+')';c.beginPath();c.arc(p.x,p.y,p.r*(1-u*0.5),0,TAU);c.fill()}
+  c.restore();
+}
+function drawGround(pal,dist,t,spd,col){
+  c.fillStyle=col(0.86);c.fillRect(-10,540,W+20,40);
+  c.fillStyle=col(0.93);c.fillRect(-10,GY,W+20,18);
+  c.fillStyle=rgb(pal.glow,0.5);c.fillRect(-10,GY,W+20,2);c.fillStyle=rgb(pal.glow,0.22);c.fillRect(-10,GY+7,W+20,1.2);
+  c.fillStyle=col(0.99);const S=46,o=((dist%S)+S)%S;c.beginPath();for(let x=-o-S;x<W+S;x+=S)c.rect(x,GY+3,22,6);c.fill();
+}
+function drawBank(pal,dist){
+  const g=c.createLinearGradient(0,574,0,H);g.addColorStop(0,rgb(mix3(pal.bot,pal.shade,0.97)));g.addColorStop(1,rgb(mix3(pal.shade,[0,0,0],0.6)));
+  c.fillStyle=g;c.fillRect(-10,574,W+20,H-574+10);
+  c.fillStyle=rgb(mix3(pal.bot,pal.shade,0.97));c.beginPath();
+  const S=16,o=((dist*1.4)%S+S)%S;
+  for(let x=-o-S;x<W+S;x+=S){const h=6+hash(Math.floor((x+o+dist*1.4)/S))*8;c.moveTo(x,575);c.lineTo(x+S*0.5,575-h);c.lineTo(x+S,575)}
+  c.fill();
+}
+function drawFgPoles(dist,spd,pal){
+  const a=sstep(0.05,0.4,spd);if(a<=0.01)return;
+  const S=900,off=((dist*1.8+130)%S+S)%S,col=rgb(mix3(pal.shade,[0,0,0],0.5),0.92*a);
+  c.strokeStyle=col;c.fillStyle=col;c.lineWidth=2;
+  for(let x=-off;x<W+S;x+=S){
+    c.fillRect(x-5,40,10,H);c.fillRect(x-40,56,80,6);
+    c.beginPath();c.moveTo(x-34,60);c.quadraticCurveTo(x+S/2,60+44,x+S-34,60);c.stroke();
+    c.beginPath();c.moveTo(x+34,60);c.quadraticCurveTo(x+S/2+60,60+40,x+S+34,60);c.stroke();
+  }
+}
+function drawFireflies(t,dist,kick){
+  const amt=sstep(48,58,t)*(1-sstep(68,80,t));if(amt<=0.01)return;
+  c.save();c.globalCompositeOperation='lighter';
+  for(const f of FIREFLY){
+    const x=(((f.x-dist*0.5*f.f)%(W*1.5))+W*1.5)%(W*1.5)-100,y=f.y+Math.sin(t*0.7*f.f+f.ph)*14;
+    const a=amt*(0.35+0.65*Math.pow(Math.sin(t*1.1*f.f+f.ph),2));
+    const g=c.createRadialGradient(x,y,0,x,y,11);g.addColorStop(0,'rgba(220,255,150,'+a+')');g.addColorStop(1,'rgba(220,255,150,0)');
+    c.fillStyle=g;c.beginPath();c.arc(x,y,11,0,TAU);c.fill();
+  }
+  c.restore();
+}
+function drawBeacons(t,off,base,amp,seed){
+  for(const e of LINES[10].evs){
+    const age=t-e.t;if(age<0)continue;
+    const lx=BEACON[e.k],sx=lx-off;if(sx<-30||sx>W+30)continue;
+    const gy=base-amp*(0.55+0.45*ridge(lx,seed)),p=sstep(0,0.35,age);
+    c.fillStyle='rgba(255,214,130,'+(0.95*p)+')';c.fillRect(sx-3,gy-6*p,6,6*p);
+    c.save();c.globalCompositeOperation='lighter';
+    const g=c.createRadialGradient(sx,gy-3,0,sx,gy-3,22*(0.4+p*0.6)+8*Math.exp(-age*3));g.addColorStop(0,'rgba(255,200,110,'+(0.55*p)+')');g.addColorStop(1,'rgba(255,200,110,0)');
+    c.fillStyle=g;c.beginPath();c.arc(sx,gy-3,34,0,TAU);c.fill();c.restore();
+  }
+}
+function fxSky(t,pal){
+  // 流星：天亮之前别说再见
+  c.save();c.globalCompositeOperation='lighter';c.lineCap='round';
+  for(const e of LINES[5].evs){
+    const a=t-e.t;if(a<0||a>1.3)continue;
+    const ang=0.5,x=170+e.ci*125+Math.cos(ang)*a*850,y=30+(e.ci%3)*34+Math.sin(ang)*a*850,al=1-a/1.3;
+    const g=c.createLinearGradient(x,y,x-Math.cos(ang)*230,y-Math.sin(ang)*230);g.addColorStop(0,'rgba(255,248,230,'+al+')');g.addColorStop(1,'rgba(255,248,230,0)');
+    c.strokeStyle=g;c.lineWidth=2.6;c.beginPath();c.moveTo(x,y);c.lineTo(x-Math.cos(ang)*230,y-Math.sin(ang)*230);c.stroke();
+  }
+  c.restore();
+  // 鸟群
+  c.strokeStyle=rgb(pal.shade,0.9);c.lineWidth=2.4;c.lineCap='round';
+  for(const li of [11,13])for(const e of LINES[li].evs){
+    const a=t-e.t;if(a<0||a>9)continue;
+    const x=-60+a*205,y=(li===11?150:210)+e.ci*20+Math.sin(a*2.4+e.ci)*12,f=Math.sin(a*9+e.ci*1.3);
+    c.beginPath();c.moveTo(x-11,y-7*f);c.quadraticCurveTo(x-4,y-2*f-3,x,y);c.quadraticCurveTo(x+4,y-2*f-3,x+11,y-7*f);c.stroke();
+  }
+}
+function fxFront(t,pal){
+  c.save();c.globalCompositeOperation='lighter';
+  for(const e of LINES[1].evs){ // 列车载着我向前：光带掠过
+    const a=t-e.t;if(a<0||a>1.2)continue;
+    const y=110+e.ci*52,len=340,x=W+80-a*2500,g=c.createLinearGradient(x,0,x+len,0);
+    g.addColorStop(0,'rgba(220,235,255,'+(0.55*(1-a/1.2))+')');g.addColorStop(1,'rgba(190,210,255,0)');c.fillStyle=g;c.fillRect(x,y,len,2.2);
+  }
+  for(const li of [6,14])for(const e of LINES[li].evs){ // 轰隆隆：心跳涟漪
+    const a=t-e.t;if(a<0||a>1.3)continue;
+    c.strokeStyle=rgb(li===6?[255,170,110]:[255,214,140],0.5*(1-a/1.3));c.lineWidth=2+7*(1-a/1.3);c.beginPath();c.arc(LOCO_X+150,GY-70,a*520+10,0,TAU);c.stroke();
+  }
+  for(const e of LINES[16].evs){ // 天亮了：太阳涟漪
+    const a=t-e.t;if(a<0||a>1.8)continue;
+    c.strokeStyle='rgba(255,226,160,'+(0.4*(1-a/1.8))+')';c.lineWidth=2+6*(1-a/1.8);c.beginPath();c.arc(860,300,a*420+70,0,TAU);c.stroke();
+  }
+  for(const e of LINES[7].evs){ // 把所有的梦都点燃：孔明灯
+    const a=t-e.t;if(a<0||a>17)continue;
+    const al=sstep(0,0.6,a)*(1-sstep(13,17,a)),x=250+e.ci*115+hash(e.ci)*40-a*16+Math.sin(a*0.8+e.ci)*14,y=540-a*34;
+    const g=c.createRadialGradient(x,y,0,x,y,48);g.addColorStop(0,'rgba(255,170,80,'+(0.5*al)+')');g.addColorStop(1,'rgba(255,170,80,0)');
+    c.fillStyle=g;c.beginPath();c.arc(x,y,48,0,TAU);c.fill();
+    c.fillStyle='rgba(255,196,110,'+(0.8*al)+')';c.beginPath();rr(x-7,y-10,14,20,4);c.fill();
+  }
+  const FW=[[255,214,120],[255,130,170],[150,220,255],[200,170,255]];
+  for(const e of LINES[15].evs){ // 把整个世界都点燃：烟火
+    const a=t-e.t;if(a<0||a>1.7)continue;
+    const cx=180+e.ci*135,cy=110+hash(e.ci*3)*130,u=a/1.7,col=FW[e.ci%4];
+    for(let i=0;i<24;i++){
+      const ang=i/24*TAU+e.ci,sp=120+(i%3)*45,px=cx+Math.cos(ang)*sp*a*(1-0.15*a),py=cy+Math.sin(ang)*sp*a*(1-0.15*a)+110*a*a;
+      c.fillStyle=rgb(col,Math.pow(1-u,1.2));c.beginPath();c.arc(px,py,2.6*(1-u)+0.6,0,TAU);c.fill();
+    }
+    if(a<0.12){c.fillStyle=rgb(col,0.5*(1-a/0.12));c.beginPath();c.arc(cx,cy,40*(a/0.12+0.3),0,TAU);c.fill()}
+  }
+  c.restore();
+}
+function drawSpeedLines(t,chA,spd){
+  if(RM||chA<=0.02||spd<0.2)return;
+  c.save();c.globalCompositeOperation='lighter';
+  for(const s of SPD_LINES){
+    const x=W+200-((t*s.v+s.o)%(W+500));
+    const g=c.createLinearGradient(x,0,x+s.len,0);g.addColorStop(0,'rgba(220,230,255,'+(0.16*chA*spd)+')');g.addColorStop(1,'rgba(220,230,255,0)');
+    c.fillStyle=g;c.fillRect(x,s.y,s.len,1.6);
+  }
+  c.restore();
+}
+function glowFlash(col,a){if(a<=0.01)return;c.save();c.globalCompositeOperation='lighter';c.fillStyle=rgb(col,a);c.fillRect(-20,-20,W+40,H+40);c.restore()}
+
+/* ---- 歌词 ---- */
+function lineLayout(L){
+  let fs=L.chorus?64:56;
+  const meas=f=>{c.font='700 '+f+'px '+F_SERIF;let tot=0;const ws=L.chars.map(ch=>{const w=ch.gap?f*0.45:c.measureText(ch.ch).width;tot+=w+f*0.12;return w});return{ws,tot:tot-f*0.12}};
+  let m=meas(fs);if(m.tot>1120){fs*=1120/m.tot;m=meas(fs)}
+  let x=(W-m.tot)/2;const pos=m.ws.map(w=>{const p={x,w};x+=w+fs*0.12;return p});
+  return{fs,pos};
+}
+function drawLyrics(t){
+  for(const L of LINES){
+    if(t<L.t0-0.5||t>L.t1+0.4)continue;
+    const ain=sstep(L.t0-0.4,L.t0+0.05,t),aout=1-sstep(L.t1-0.2,L.t1+0.25,t),al=ain*aout;if(al<=0.01)continue;
+    const{fs,pos}=lineLayout(L),y=648+(1-ain)*26-(1-aout)*120;
+    const bright=L.chorus?[255,205,160]:(L.outro?[255,246,230]:[255,240,205]),glow=L.chorus?[255,140,90]:[255,210,130];
+    c.save();c.globalAlpha=al;c.font='700 '+fs+'px '+F_SERIF;c.textBaseline='middle';c.textAlign='center';c.lineJoin='round';
+    L.chars.forEach((ch,i)=>{
+      if(ch.gap)return;
+      const p=pos[i],age=t-ch.t,prog=clamp(age/ch.d),pop=age>=0?Math.exp(-age*7):0,cx=p.x+p.w/2;
+      c.save();c.translate(cx,y-pop*5);const s=1+0.2*pop;c.scale(s,s);
+      c.lineWidth=fs*0.13;c.strokeStyle='rgba(2,3,12,0.62)';c.strokeText(ch.ch,0,0);
+      c.fillStyle='rgba(214,222,255,0.42)';c.fillText(ch.ch,0,0);
+      if(prog>0){
+        c.save();c.beginPath();c.rect(-p.w/2-4,-fs,p.w*prog+8,fs*2);c.clip();
+        c.shadowColor=rgb(glow,0.9);c.shadowBlur=prog>=1?Math.max(0,20*Math.exp(-(age-ch.d)*3)):20;
+        c.fillStyle=rgb(bright);c.fillText(ch.ch,0,0);c.restore();
+      }
+      c.restore();
+    });
+    c.restore();
+  }
+}
+function spawnSparks(t0,t1){
+  for(const e of LYEV){
+    if(e.t<=t0||e.t>t1)continue;
+    const L=LINES[e.li],{fs,pos}=lineLayout(L),p=pos[e.ci];
+    for(let i=0;i<7;i++)SP.push({k:'spark',x:p.x+p.w/2,y:648,vx:(Math.random()-0.5)*220,vy:-60-Math.random()*190,age:0,life:0.6+Math.random()*0.5,r:1.4+Math.random()*1.6,c:L.chorus?[255,190,130]:[255,226,150]});
+  }
+}
+function drawSparks(){
+  c.save();c.globalCompositeOperation='lighter';
+  for(const p of SP){const u=p.age/p.life;c.fillStyle=rgb(p.c,1-u);c.beginPath();c.arc(p.x,p.y,p.r*(1-u*0.6),0,TAU);c.fill()}
+  c.restore();
+}
+function drawTitle(t,kick,pal){
+  const a=sstep(0.6,2.2,t)*(1-sstep(8.2,9.9,t));
+  if(a>0.01){
+    c.save();c.globalAlpha=a;c.textAlign='center';c.textBaseline='middle';c.translate(W/2,232);const s=1+0.014*kick;c.scale(s,s);
+    c.font='400 168px '+F_BRUSH;c.shadowColor='rgba(255,190,120,0.55)';c.shadowBlur=36;c.fillStyle='rgb(255,236,200)';c.fillText('夜行列车',0,0);
+    c.shadowBlur=0;c.font='500 22px '+F_SERIF;if('letterSpacing' in c)c.letterSpacing='0.55em';c.fillStyle='rgba(220,228,255,0.85)';c.fillText('NIGHT EXPRESS',0,112);
+    if('letterSpacing' in c)c.letterSpacing='0.3em';c.font='500 18px '+F_SERIF;c.fillStyle='rgba(200,208,245,0.7)';c.fillText('一首由代码写成的歌',0,150);
+    if('letterSpacing' in c)c.letterSpacing='0px';
+    c.restore();
+  }
+  const b=sstep(96.4,98.6,t);
+  if(b>0.01){
+    c.save();c.globalAlpha=b;c.textAlign='center';c.textBaseline='middle';c.translate(W/2-150,200);
+    c.font='400 150px '+F_BRUSH;c.shadowColor='rgba(255,246,220,0.8)';c.shadowBlur=30;c.fillStyle='rgb(70,46,92)';c.fillText('终',0,0);
+    c.shadowBlur=0;c.font='500 18px '+F_SERIF;if('letterSpacing' in c)c.letterSpacing='0.35em';c.fillStyle='rgb(84,60,104)';c.fillText('词 · 曲 · 动画　Claude',0,92);
+    if('letterSpacing' in c)c.letterSpacing='0px';
+    c.restore();
+  }
+}
+
+/* ---- 单帧 ---- */
+let playingNow=false;
+function frame(t){
+  const oldT=prevT,dt=clamp(t-prevT,0,0.08);
+  if(t<prevT-0.001||t-prevT>0.6){PT.length=0;SP.length=0;lastBi=Math.floor(t/BEAT)}
+  else if(oldT>=0&&dt>0)spawnSparks(oldT,t);
+  prevT=t;
+  const pal=palAt(t),en=energyAt(t),bph=t/BEAT,bp=bph-Math.floor(bph);
+  const kick=Math.exp(-bp*5.2)*en,spd=speedAt(t),dist=distAt(t);
+  const dawn=sstep(54,80,t),day=sstep(76,94,t),nightA=1-sstep(54,76,t);
+  const chA=(sstep(29.4,31,t)-sstep(50,51.5,t))+(sstep(69.4,71,t)-sstep(90,91.5,t));
+  const bi=Math.floor(bph);
+  if(bi!==lastBi){if(bi===lastBi+1&&dt>0)spawnBeat(pal,spd,en);lastBi=bi}
+  stepParticles(dt);
+  const col=d=>rgb(mix3(pal.bot,pal.shade,d));
+
+  c.setTransform(scale,0,0,scale,0,0);c.fillStyle='#000';c.fillRect(0,0,W,H);
+  c.save();
+  const hi=en>0.8?1:0.35,z=1.016+(RM?0:0.010*kick*hi);
+  const shx=RM?0:Math.sin(t*37)*kick*1.6*hi,shy=RM?0:Math.cos(t*29)*kick*1.2*hi;
+  c.translate(W/2+shx,H*0.62+shy);c.scale(z,z);c.translate(-W/2,-H*0.62);
+
+  drawSky(pal,t,dawn);
+  drawStars(t,dist,kick,chA,nightA);
+  const aur=(sstep(30,34,t)-sstep(50,54,t));drawAurora(t,aur*(0.85+0.3*kick));
+  drawClouds(pal,t,dist);
+  drawMoon(pal,t,kick,Math.max(evPulse(3,t,4),evPulse(9,t,4)));
+  drawSun(pal,t,kick,Math.max(evPulse(12,t,3),evPulse(13,t,3),evPulse(16,t,3)));
+  fxSky(t,pal);
+  drawMountains(col(0.25),dist*0.03);
+  // 城市灯光的光晕
+  const litN=OFFT.filter(x=>x<=t).length,litFrac=t<OFFT[0]?1:1-litN/8*0.9;
+  if(litFrac>0.02&&nightA>0.02){
+    c.save();c.globalCompositeOperation='lighter';const gx=830-dist*0.35,g=c.createRadialGradient(gx,480,10,gx,480,560);
+    g.addColorStop(0,'rgba(255,190,110,'+(0.22*litFrac*nightA)+')');g.addColorStop(1,'rgba(255,190,110,0)');c.fillStyle=g;c.fillRect(0,0,W,H);c.restore();
+  }
+  drawCity(CITY.f0,dist*0.12,478,col(0.38),true,pal,t,day,bp);
+  drawCity(CITY.f1,dist*0.12,478,col(0.38),true,pal,t,day,bp);
+  drawHills(col(0.5),dist*0.2,500,50,4.2);
+  drawBeacons(t,dist*0.2,500,50,4.2);
+  drawCity(CITY.n0,dist*0.35,540,col(0.66),false,pal,t,day,bp);
+  drawCity(CITY.n1,dist*0.35,540,col(0.66),false,pal,t,day,bp);
+  drawTrees(dist*0.55,548,col(0.8));
+  drawGround(pal,dist,t,spd,col);
+  drawPoles(dist,col(0.9),pal);
+  drawFireflies(t,dist,kick);
+  drawBeam(t,spd,day,kick,Math.max(evPulse(4,t,3),evPulse(12,t,3)));
+  drawTrain(t,pal,spd,dist,kick,day);
+  drawSmoke(pal);
+  drawBank(pal,dist);
+  drawFgPoles(dist,spd,pal);
+  fxFront(t,pal);
+  drawSpeedLines(t,chA,spd);
+  if(!RM){
+    glowFlash([255,170,230],0.14*Math.exp(-(t-30)*3)*(t>=30&&t<33?1:0));
+    glowFlash([255,200,150],0.14*Math.exp(-(t-70)*3)*(t>=70&&t<73?1:0));
+    glowFlash([255,246,214],0.34*Math.exp(-(t-85)*2.2)*(t>=85&&t<88?1:0));
+  }
+  c.restore();
+
+  // 暗角与字幕底
+  if(!vig){vig=c.createRadialGradient(W/2,H*0.5,H*0.35,W/2,H*0.5,H*1.0);vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.5)')}
+  c.fillStyle=vig;c.fillRect(0,0,W,H);
+  const sc=c.createLinearGradient(0,H*0.78,0,H);sc.addColorStop(0,'rgba(0,0,0,0)');sc.addColorStop(1,'rgba(0,0,0,0.38)');c.fillStyle=sc;c.fillRect(0,H*0.78,W,H*0.22);
+  drawLyrics(t);drawSparks();drawTitle(t,kick,pal);
+}
+
+/* ========================================================================
+   播放控制
+   ======================================================================== */
+const $=id=>document.getElementById(id);
+const stage=$('stage'),veil=$('veil'),pp=$('pp'),seekEl=$('seek'),tm=$('tm');
+const ICON_PLAY='<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+const ICON_PAUSE='<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>';
+let started=false,playing=false,ended=false,pendingSeek=null,seekTimer=0,session=null,t0=0,evIdx=0,pump=0,dragging=false;
+$('veilS').textContent='约 '+Math.floor(END/60)+' 分 '+String(Math.round(END%60)).padStart(2,'0')+' 秒 · 戴耳机更好';
+
+function initAudio(){
+  const AC=window.AudioContext||window.webkitAudioContext;
+  setupGraph(new AC({latencyHint:'interactive'}));
+  pump=setInterval(()=>{
+    if(!ctx||!session||!playing)return;
+    const now=ctx.currentTime,hor=now+0.4;
+    while(evIdx<EV.length){
+      const e=EV[evIdx],w=t0+e.t;if(w>hor)break;evIdx++;
+      if(w<now-0.05)continue;trigger(e,Math.max(w,now),session);
+    }
+  },50);
+}
+function startSession(pos){
+  if(session)killSession(session);
+  session=mkSession();
+  t0=ctx.currentTime+0.15-pos;
+  evIdx=EV.findIndex(e=>e.t>=pos-0.001);if(evIdx<0)evIdx=EV.length;
+  for(const e of EV){ // 正在持续的和弦垫，从当前位置接上
+    if(e.type==='pad'&&e.t<pos&&e.t+e.dur>pos+0.4)trigger(Object.assign({},e,{dur:e.t+e.dur-pos}),ctx.currentTime+0.15,session);
+  }
+}
+async function startPlay(pos){
+  if(!ctx)initAudio();
+  try{await ctx.resume()}catch(e){}
+  startSession(pos||0);started=true;playing=true;ended=false;playingNow=true;ui();
+}
+function curT(){
+  if(!started)return 3+((performance.now()/1000)%4.8);
+  if(pendingSeek!==null)return pendingSeek;
+  if(ended)return END;
+  return clamp(ctx.currentTime-t0-(ctx.outputLatency||0),0,END);
+}
+async function toggle(){
+  if(!started||ended){await startPlay(0);return}
+  if(playing){await ctx.suspend();playing=false;playingNow=false}
+  else{await ctx.resume();playing=true;playingNow=true}
+  ui();
+}
+function seek(pos){
+  pos=clamp(pos,0,END-0.6);
+  if(!started){startPlay(pos);return}
+  pendingSeek=pos;
+  if(session){killSession(session);session=null}
+  clearTimeout(seekTimer);
+  seekTimer=setTimeout(async()=>{
+    pendingSeek=null;
+    if(ended||!playing){ended=false;playing=true;playingNow=true;try{await ctx.resume()}catch(e){}}
+    startSession(pos);ui();
+  },140);
+}
+function ui(){
+  pp.innerHTML=playing?ICON_PAUSE:ICON_PLAY;pp.setAttribute('aria-label',playing?'暂停':'播放');
+  veil.hidden=started&&!ended;
+  $('veilT').textContent=ended?'再看一遍':'点击播放';
+}
+pp.addEventListener('click',toggle);
+veil.addEventListener('click',()=>{if(ended)startPlay(0);else toggle()});
+cv.addEventListener('click',()=>{if(started&&!ended)toggle()});
+seekEl.addEventListener('input',()=>{dragging=true;seek(seekEl.value/1000*END)});
+seekEl.addEventListener('change',()=>{dragging=false});
+seekEl.addEventListener('pointerup',()=>{dragging=false});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&!/^(BUTTON|INPUT|TEXTAREA)$/.test(document.activeElement&&document.activeElement.tagName)){e.preventDefault();toggle()}
+});
+$('fs').addEventListener('click',()=>{
+  try{if(document.fullscreenElement)document.exitFullscreen();else if(stage.requestFullscreen)stage.requestFullscreen()}catch(e){}
+});
+document.addEventListener('fullscreenchange',()=>setTimeout(resize,60));
+
+/* 歌词列表 */
+const lyr=$('lyr'),lnEls=[];
+SECS.forEach((S,si)=>{
+  const box=document.createElement('div');box.className='sec'+(S.k==='chorus'?' chorus':'');
+  const h=document.createElement('h3');h.textContent=S.n;box.appendChild(h);
+  const ls=LINES.filter(L=>L.si===si);
+  if(!ls.length){const b=document.createElement('button');b.type='button';b.className='ln inst';b.textContent='（器乐）';b.onclick=()=>seek(0.05);box.appendChild(b)}
+  ls.forEach(L=>{const b=document.createElement('button');b.type='button';b.className='ln';b.textContent=L.text;b.onclick=()=>seek(Math.max(0,L.t0-0.3));box.appendChild(b);lnEls[L.li]=b});
+  lyr.appendChild(box);
+});
+{ // 进度条上的段落底色
+  const colr={intro:'#2a3060',verse:'#323a78',chorus:'#7a4d7a',outro:'#2a3060'};
+  seekEl.style.setProperty('--track','linear-gradient(90deg,'+SECS.map(S=>{const a=S.bar*BAR/END*100,b=(S.bar+S.len)*BAR/END*100;return colr[S.k]+' '+a+'% '+b+'%'}).join(',')+',#2a3060 '+(MUSIC_END/END*100)+'% 100%)');
+}
+let curLine=-1;
+function updateUI(t){
+  if(!dragging)seekEl.value=Math.round(t/END*1000);
+  seekEl.style.setProperty('--p',(t/END*100).toFixed(2)+'%');
+  tm.textContent=fmt(t)+' / '+fmt(END);
+  let li=-1;LINES.forEach(L=>{if(t>=L.t0-0.3&&t<L.t1+0.4)li=L.li});
+  if(li!==curLine){if(lnEls[curLine])lnEls[curLine].classList.remove('on');if(lnEls[li])lnEls[li].classList.add('on');curLine=li}
+}
+
+/* 主循环 */
+let lastUI=0;
+function loop(now){
+  const t=window.__freeze!=null?window.__freeze:curT();
+  if(started&&playing&&!ended&&pendingSeek===null&&t>=END-0.001){ended=true;playing=false;playingNow=false;try{ctx.suspend()}catch(e){}ui()}
+  if(ana&&FD&&playingNow)ana.getByteFrequencyData(FD);
+  frame(t);
+  if(now-lastUI>60){updateUI(t);lastUI=now}
+  requestAnimationFrame(loop);
+}
+new ResizeObserver(resize).observe(cv);resize();
+ui();
+try{
+  const all=LYEV.map(e=>e.ch).join('');
+  Promise.all([document.fonts.load('700 60px "Noto Serif SC"',all+'夜行列车'),document.fonts.load('500 24px "Noto Serif SC"',all+'NIGHT EXPRESS一首由代码写成的歌终词曲动画'),document.fonts.load('400 120px "Ma Shan Zheng"','夜行列车终')]).catch(()=>{});
+}catch(e){}
+requestAnimationFrame(loop);
+
+/* 调试与自检入口 */
+window.__mv={frame,END,LINES,EV,
+  async renderOffline(){
+    const sr=44100,oc=new OfflineAudioContext(2,Math.ceil(sr*(END+1)),sr),saved=[ctx,master,ana,rvIn,dlIn,NB,FD];
+    setupGraph(oc);const S=mkSession();EV.forEach(e=>trigger(e,e.t+0.05,S));
+    const buf=await oc.startRendering();[ctx,master,ana,rvIn,dlIn,NB,FD]=saved;
+    const L=buf.getChannelData(0),R=buf.getChannelData(1),out=[];
+    for(let s=0;s<Math.ceil(END);s+=5){let pk=0,sum=0,n=0;for(let i=Math.floor(s*sr);i<Math.min(L.length,Math.floor((s+5)*sr));i++){const v=Math.max(Math.abs(L[i]),Math.abs(R[i]));if(v>pk)pk=v;sum+=L[i]*L[i];n++}out.push({s,peak:+pk.toFixed(3),rms:+Math.sqrt(sum/n).toFixed(4)})}
+    let nan=0;for(let i=0;i<L.length;i+=97)if(!isFinite(L[i]))nan++;
+    return{out,nan,len:L.length/sr};
+  }};
+})();
+</script>
